@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { Leaf, Bell, ChevronDown, Menu, X, LogOut } from 'lucide-react'
 import { classNames } from '../utils/helpers.js'
+import { useAuth } from '../context/AuthContext.jsx'
 
 /**
  * PortalLayout
@@ -14,7 +15,18 @@ import { classNames } from '../utils/helpers.js'
 export default function PortalLayout({ navItems = [], role, user, children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [unread,      setUnread]      = useState(false)
   const navigate = useNavigate()
+  const { apiFetch } = useAuth()
+
+  // Poll unread state for citizens — light check, no heavy payload
+  useState(() => {
+    if (role !== 'citizen') return
+    apiFetch('/api/reports?limit=1&status=assigned')
+      .then(r => r.json())
+      .then(j => setUnread((j.total ?? 0) > 0))
+      .catch(() => {})
+  })
 
   const roleAccent = {
     citizen:   { pill: 'bg-forest-500/20 text-forest-300 border-forest-500/30', dot: 'bg-forest-400' },
@@ -24,8 +36,10 @@ export default function PortalLayout({ navItems = [], role, user, children }) {
 
   const roleLabel = { citizen: 'Citizen', collector: 'Collector', admin: 'Admin' }[role] ?? role
 
+  const { logout } = useAuth()
+
   function handleLogout() {
-    // TODO: call authContext.logout() then redirect
+    logout()
     navigate('/login')
   }
 
@@ -137,8 +151,9 @@ export default function PortalLayout({ navItems = [], role, user, children }) {
             {/* Notifications */}
             <button className="relative p-2 rounded-lg text-sand-500 hover:text-sand-200 hover:bg-forest-800/50 transition-all">
               <Bell size={17} />
-              {/* TODO: render dot when unread notifications exist */}
-              {/* <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-forest-400" /> */}
+              {unread && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-forest-400 animate-pulse" />
+              )}
             </button>
 
             {/* Profile dropdown */}

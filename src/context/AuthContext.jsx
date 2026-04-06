@@ -1,55 +1,95 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useState, useCallback } from 'react'
 
 const AuthContext = createContext(null)
 
+const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
+  const [user,    setUser]    = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cc_user') ?? 'null') } catch { return null }
+  })
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [error,   setError]   = useState(null)
 
-  // ── Replace these with real API calls ──────────────────────────────────────
-
-  async function login({ email, password }) {
-    setLoading(true)
-    setError(null)
-    try {
-      // TODO: replace with real endpoint
-      // const res = await fetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }), headers: { 'Content-Type': 'application/json' } })
-      // if (!res.ok) throw new Error((await res.json()).message)
-      // const data = await res.json()
-      // setUser(data.user)
-      throw new Error('Login API not connected yet.')
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
+  function saveSession(userData, token) {
+    localStorage.setItem('cc_token', token)
+    localStorage.setItem('cc_user',  JSON.stringify(userData))
+    setUser(userData)
   }
 
-  async function signup(payload) {
-    setLoading(true)
-    setError(null)
-    try {
-      // TODO: replace with real endpoint
-      // const res = await fetch('/api/auth/signup', { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } })
-      // if (!res.ok) throw new Error((await res.json()).message)
-      // const data = await res.json()
-      // setUser(data.user)
-      throw new Error('Signup API not connected yet.')
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  function logout() {
+  function clearSession() {
+    localStorage.removeItem('cc_token')
+    localStorage.removeItem('cc_user')
     setUser(null)
-    // TODO: invalidate server session / token
   }
+
+  const login = useCallback(async ({ email, password }) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`${API}/api/auth/login`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email, password }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail ?? 'Login failed')
+      }
+      const { access_token, user: userData } = await res.json()
+      saveSession(userData, access_token)
+      return userData
+    } catch (err) {
+      setError(err.message)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const signup = useCallback(async (payload) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`${API}/api/auth/signup`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail ?? 'Signup failed')
+      }
+      const { access_token, user: userData } = await res.json()
+      saveSession(userData, access_token)
+      return userData
+    } catch (err) {
+      setError(err.message)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const logout = useCallback(() => { clearSession() }, [])
+
+  const apiFetch = useCallback(async (path, options = {}) => {
+    const token = localStorage.getItem('cc_token')
+    const isFormData = options.body instanceof FormData
+    const res = await fetch(`${API}${path}`, {
+      ...options,
+      headers: {
+        ...(options.headers ?? {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(!isFormData ? { 'Content-Type': 'application/json' } : {}),
+      },
+    })
+    if (res.status === 401) { clearSession(); throw new Error('Session expired') }
+    return res
+  }, [])
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, loading, error, login, signup, logout, apiFetch }}>
       {children}
     </AuthContext.Provider>
   )
