@@ -1,0 +1,85 @@
+version: "3.9"
+
+# ── CleanCity — full stack ────────────────────────────────────────────────────
+# Services:
+#   api       — FastAPI (Python 3.12) on :8000
+#   realtime  — Node.js 20 Socket.IO on :4000
+#   engine    — C++20 scoring engine on :8001
+#   frontend  — Vite dev server on :5173  (dev only; replace with nginx in prod)
+#
+# Start everything: docker compose up --build
+# Seed demo data:   docker compose exec api python -m api.db.seed
+
+services:
+
+  # ── C++ scoring engine ──────────────────────────────────────────────────────
+  engine:
+    build:
+      context: ./backend/engine
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI backend ─────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend/api
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file: ./backend/api/.env
+    environment:
+      ENGINE_URL: "http://engine:8001"
+      REALTIME_URL: "http://realtime:4000"
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      engine:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Node.js realtime service ────────────────────────────────────────────────
+  realtime:
+    build:
+      context: ./backend/realtime
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    env_file: ./backend/realtime/.env
+    environment:
+      API_URL: "http://api:8000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Vite frontend (dev only) ────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: "http://localhost:8000"
+      VITE_REALTIME_URL: "http://localhost:4000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - api
+      - realtime
+
+volumes:
+  uploads_data:

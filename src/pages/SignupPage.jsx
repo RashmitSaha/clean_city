@@ -184,15 +184,23 @@ export default function SignupPage() {
     setApiError(null)
     setLoading(true)
     try {
-      // TODO: replace with real signup API call
-      // const res = await fetch('/api/auth/signup', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(values),
-      // })
-      // if (!res.ok) throw new Error((await res.json()).message)
-      // navigate('/login?registered=1')
-      throw new Error('Signup API not connected yet — wire up your backend here.')
+      const payload = {
+        full_name: `${values.firstName} ${values.lastName}`.trim(),
+        email:     values.email,
+        password:  values.password,
+        role:      values.role,
+        phone:     values.phone || undefined,
+      }
+      const res = await fetch(`${import.meta.env.VITE_API_URL ?? 'http://localhost:8000'}/api/auth/signup`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail ?? 'Signup failed')
+      }
+      navigate('/login?registered=1')
     } catch (err) {
       setApiError(err.message)
     } finally {
